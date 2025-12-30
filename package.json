@@ -4,11 +4,11 @@
     "description": "Analyze S3 storage by file type (images, videos, documents)",
     "main": "s3-storage-analyzer.js",
     "scripts": {
-      "start": "node --no-deprecation s3-storage-analyzer.js",
-      "analyze": "node --no-deprecation s3-storage-analyzer.js",
-      "analyze:car-images": "cross-env S3_PREFIX=CarImages node --no-deprecation s3-storage-analyzer.js",
-      "analyze:profile": "cross-env S3_PREFIX=UserProfilePictures node --no-deprecation s3-storage-analyzer.js",
-      "analyze:documents": "cross-env S3_PREFIX=Documents node --no-deprecation s3-storage-analyzer.js"
+      "start": "cross-env NODE_OPTIONS=--no-deprecation node s3-storage-analyzer.js",
+      "analyze": "cross-env NODE_OPTIONS=--no-deprecation node s3-storage-analyzer.js",
+      "analyze:car-images": "cross-env NODE_OPTIONS=--no-deprecation S3_PREFIX=CarImages node s3-storage-analyzer.js",
+      "analyze:profile": "cross-env NODE_OPTIONS=--no-deprecation S3_PREFIX=UserProfilePictures node s3-storage-analyzer.js",
+      "analyze:documents": "cross-env NODE_OPTIONS=--no-deprecation S3_PREFIX=Documents node s3-storage-analyzer.js"
     },
     "keywords": [
       "s3",
