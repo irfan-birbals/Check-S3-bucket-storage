@@ -1,0 +1,29 @@
+{
+    "name": "s3-storage-analyzer",
+    "version": "1.0.0",
+    "description": "Analyze S3 storage by file type (images, videos, documents)",
+    "main": "s3-storage-analyzer.js",
+    "scripts": {
+      "start": "node s3-storage-analyzer.js",
+      "analyze": "node s3-storage-analyzer.js",
+      "analyze:car-images": "cross-env S3_PREFIX=CarImages node s3-storage-analyzer.js",
+      "analyze:profile": "cross-env S3_PREFIX=UserProfilePictures node s3-storage-analyzer.js",
+      "analyze:documents": "cross-env S3_PREFIX=Documents node s3-storage-analyzer.js"
+    },
+    "keywords": [
+      "s3",
+      "storage",
+      "analyzer",
+      "aws"
+    ],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+      "@aws-sdk/client-s3": "^3.0.0",
+      "@aws-sdk/credential-providers": "^3.0.0",
+      "cross-env": "^7.0.3",
+      "dotenv": "^16.0.0"
+    }
+  }
+  
+  
