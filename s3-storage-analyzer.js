@@ -1,11 +1,45 @@
+// Suppress Node.js deprecation warnings for AWS SDK (Node.js v18.20.8 compatibility)
+// This warning appears because AWS SDK v3 will drop support for Node.js v18 in Jan 2026
+// The code still works fine with Node.js v18.20.8 until then
+const originalEmitWarning = process.emitWarning;
+process.emitWarning = function(warning, type, code, ctor) {
+    // Suppress AWS SDK deprecation warnings for Node.js v18
+    if (code === 'NodeDeprecationWarning' && 
+        typeof warning === 'string' && 
+        warning.includes('AWS SDK') && 
+        warning.includes('Node.js v18')) {
+        return; // Suppress this specific warning
+    }
+    // Allow all other warnings through
+    return originalEmitWarning.apply(process, arguments);
+};
+
 require('dotenv').config();
 
 const { S3Client, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 
 // Configuration
-const AWS_REGION = process.env.AWS_REGION;
-const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME;
-const S3_PREFIX = process.env.S3_PREFIX || ''; // Optional prefix filter
+const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
+const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME || 'micurato-design-1';
+
+// Clean and validate S3_PREFIX - remove any invalid characters or descriptions
+let S3_PREFIX = process.env.S3_PREFIX || '';
+if (S3_PREFIX) {
+    // Remove common invalid patterns (like "CarImages or UserProfilePictures or Documents [keep OPTIONAL if want all]")
+    // Only keep valid prefix paths (alphanumeric, slashes, hyphens, underscores)
+    const cleaned = S3_PREFIX.trim();
+    // If it looks like a description/help text rather than a valid prefix, clear it
+    if (cleaned.includes(' or ') || cleaned.includes('[keep OPTIONAL') || cleaned.includes('OPTIONAL')) {
+        console.log(`⚠️  Warning: Invalid S3_PREFIX detected: "${S3_PREFIX}"`);
+        console.log('   Clearing prefix to scan all objects. Use a valid prefix like: CarImages, UserProfilePictures, or Documents\n');
+        S3_PREFIX = '';
+    } else {
+        // Ensure prefix ends with / if it's meant to be a folder prefix (optional)
+        // But don't force it - let user decide
+        S3_PREFIX = cleaned;
+    }
+}
+
 const EXCLUDE_DOCUMENT_SNAPSHOTS = process.env.EXCLUDE_DOCUMENT_SNAPSHOTS === 'true'; // Exclude document snapshots from count
 
 // File type definitions by extension
@@ -490,6 +524,5 @@ async function main() {
 if (require.main === module) {
     main();
 }
-
 
 module.exports = { analyzeStorage, formatBytes, classifyFileType };
