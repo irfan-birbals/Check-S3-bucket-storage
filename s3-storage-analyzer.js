@@ -6,13 +6,24 @@ process.emitWarning = function(warning, type, code, ctor) {
     // Suppress AWS SDK deprecation warnings for Node.js v18
     if (code === 'NodeDeprecationWarning' && 
         typeof warning === 'string' && 
-        warning.includes('AWS SDK') && 
-        warning.includes('Node.js v18')) {
+        (warning.includes('AWS SDK') || warning.includes('aws-sdk'))) {
         return; // Suppress this specific warning
     }
     // Allow all other warnings through
     return originalEmitWarning.apply(process, arguments);
 };
+
+// Also suppress warnings emitted via process.on('warning')
+process.on('warning', (warning) => {
+    if (warning.name === 'NodeDeprecationWarning' && 
+        warning.message && 
+        (warning.message.includes('AWS SDK') || warning.message.includes('aws-sdk'))) {
+        // Suppress - don't emit
+        return;
+    }
+    // For other warnings, emit them normally
+    console.warn(warning.name, warning.message);
+});
 
 require('dotenv').config();
 
@@ -494,6 +505,28 @@ async function main() {
 
     } catch (error) {
         console.error('\n❌ Error:', error.message);
+        
+        // Provide helpful error messages for IAM permission issues
+        if (error.name === 'AccessDenied' || 
+            error.message.includes('not authorized') || 
+            error.message.includes('is not authorized to perform')) {
+            console.error('\n🔒 IAM Permission Error:');
+            console.error('   Your IAM role/user does not have the required S3 permissions.');
+            console.error(`   Required permission: s3:ListBucket on bucket "${S3_BUCKET_NAME}"`);
+            console.error('\n💡 How to Fix:');
+            console.error('   1. Go to AWS IAM Console: https://console.aws.amazon.com/iam/');
+            console.error('   2. Find your IAM role: EC2BackendRole');
+            console.error('   3. Attach a policy with S3 read permissions, such as:');
+            console.error('      - AmazonS3ReadOnlyAccess (for read-only access)');
+            console.error('      - Or create a custom policy with:');
+            console.error('        {');
+            console.error('          "Effect": "Allow",');
+            console.error('          "Action": ["s3:ListBucket", "s3:GetObject"],');
+            console.error(`          "Resource": ["arn:aws:s3:::${S3_BUCKET_NAME}", "arn:aws:s3:::${S3_BUCKET_NAME}/*"]`);
+            console.error('        }');
+            console.error('\n   ⚠️  Note: Using an older S3 package will NOT fix this error.');
+            console.error('      This is an IAM permissions issue, not a package version issue.');
+        }
         
         // Provide helpful error messages for common authentication issues
         if (error.name === 'CredentialsProviderError' || error.message.includes('credentials')) {
