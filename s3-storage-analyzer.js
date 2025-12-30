@@ -3,8 +3,8 @@ require('dotenv').config();
 const { S3Client, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 
 // Configuration
-const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
-const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME || 'micurato-design-1';
+const AWS_REGION = process.env.AWS_REGION;
+const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME;
 const S3_PREFIX = process.env.S3_PREFIX || ''; // Optional prefix filter
 const EXCLUDE_DOCUMENT_SNAPSHOTS = process.env.EXCLUDE_DOCUMENT_SNAPSHOTS === 'true'; // Exclude document snapshots from count
 
@@ -490,5 +490,6 @@ async function main() {
 if (require.main === module) {
     main();
 }
+
 
 module.exports = { analyzeStorage, formatBytes, classifyFileType };
