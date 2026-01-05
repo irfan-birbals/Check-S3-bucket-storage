@@ -31,7 +31,7 @@ const { S3Client, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 
 // Configuration
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
-const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME || 'micurato-design-1';
+const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME;
 
 // Clean and validate S3_PREFIX - remove any invalid characters or descriptions
 let S3_PREFIX = process.env.S3_PREFIX || '';
@@ -480,8 +480,7 @@ async function main() {
         console.log('🚀 Starting S3 Storage Analysis...\n');
 
         // Validate bucket name
-        if (!S3_BUCKET_NAME || S3_BUCKET_NAME === 'micurato-design-1') {
-            console.log('ℹ️  Using default bucket: micurato-design-1');
+        if (!S3_BUCKET_NAME) {
             console.log('   Set S3_BUCKET_NAME environment variable to use a different bucket\n');
         }
 
@@ -559,3 +558,4 @@ if (require.main === module) {
 }
 
 module.exports = { analyzeStorage, formatBytes, classifyFileType };
+
