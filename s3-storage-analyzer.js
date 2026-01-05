@@ -24,7 +24,7 @@ const { S3Client, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const { Pool } = require('pg');
 
 // Configuration
-const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
+const AWS_REGION = process.env.AWS_REGION;
 const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME;
 const DB_HOST = process.env.DB_HOST;
 const DB_PORT = process.env.DB_PORT || 5432;
@@ -334,6 +334,14 @@ async function generateCsv(prefix, excludeDocumentSnapshots) {
             if (!shouldIncludeFile(s3Key, baseName, pathType, validBaseNames)) {
                 excludedCount++;
                 continue;
+            }
+            
+            // Exclude thumbnails from all folders except CarImages
+            if (pathType === 'thumbnail') {
+                if (!s3Key.startsWith('CarImages/')) {
+                    excludedCount++;
+                    continue;
+                }
             }
             
             // Handle document exclusions
