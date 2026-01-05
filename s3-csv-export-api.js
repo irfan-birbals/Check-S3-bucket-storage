@@ -19,19 +19,54 @@ process.on('warning', (warning) => {
 });
 
 require('dotenv').config();
-const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const { S3Client, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const { Pool } = require('pg');
 
 // Configuration
-const AWS_REGION = process.env.AWS_REGION;
+const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
 const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME;
 const DB_HOST = process.env.DB_HOST;
 const DB_PORT = process.env.DB_PORT || 5432;
 const DB_NAME = process.env.DB_NAME;
 const DB_USER = process.env.DB_USER;
 const DB_PASSWORD = process.env.DB_PASSWORD;
-const PORT = process.env.PORT || 3000;
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+let prefix = null;
+let excludeDocumentSnapshots = false;
+let outputFile = null;
+
+for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--prefix' && args[i + 1]) {
+        prefix = args[i + 1];
+        i++;
+    } else if (args[i] === '--exclude-document-snapshots') {
+        excludeDocumentSnapshots = true;
+    } else if (args[i] === '--output' && args[i + 1]) {
+        outputFile = args[i + 1];
+        i++;
+    } else if (args[i] === '--help' || args[i] === '-h') {
+        console.log(`
+Usage: node s3-csv-export-standalone.js [options]
+
+Options:
+  --prefix <prefix>              S3 prefix to filter (e.g., "CarImages/")
+  --exclude-document-snapshots   Exclude document snapshot files
+  --output <filename>            Output CSV filename (default: s3-media-export-<timestamp>.csv)
+  --help, -h                     Show this help message
+
+Examples:
+  node s3-csv-export-standalone.js
+  node s3-csv-export-standalone.js --prefix "CarImages/"
+  node s3-csv-export-standalone.js --prefix "CarImages/" --exclude-document-snapshots
+  node s3-csv-export-standalone.js --output my-export.csv
+        `);
+        process.exit(0);
+    }
+}
 
 // Validate required environment variables
 if (!S3_BUCKET_NAME) {
@@ -252,15 +287,17 @@ async function listAllObjects(prefix) {
             
             if (response.Contents) {
                 allObjects.push(...response.Contents);
+                process.stdout.write(`\r⏳ Fetched ${allObjects.length} objects...`);
             }
             
             continuationToken = response.NextContinuationToken;
         } catch (error) {
-            console.error('Error listing S3 objects:', error);
+            console.error('\nError listing S3 objects:', error);
             throw error;
         }
     } while (continuationToken);
     
+    console.log(`\n✅ Total objects found: ${allObjects.length}`);
     return allObjects;
 }
 
@@ -270,7 +307,9 @@ async function listAllObjects(prefix) {
  */
 async function generateCsv(prefix, excludeDocumentSnapshots) {
     const startTime = Date.now();
-    console.log(`Starting CSV export. Prefix: ${prefix || '(none)'}, ExcludeDocumentSnapshots: ${excludeDocumentSnapshots}`);
+    console.log(`\n🚀 Starting CSV export...`);
+    console.log(`   Prefix: ${prefix || '(none)'}`);
+    console.log(`   Exclude Document Snapshots: ${excludeDocumentSnapshots}\n`);
     
     try {
         // Step 1: Query database to get all valid media filenames
@@ -278,24 +317,25 @@ async function generateCsv(prefix, excludeDocumentSnapshots) {
         const validBaseNames = await getValidMediaFilenamesFromDatabase();
         
         if (validBaseNames.size === 0) {
-            console.log('No media files found in database');
+            console.log('⚠️  No media files found in database');
             return generateEmptyCsv();
         }
         
         // Step 2: List all objects from S3
-        console.log('Step 2: Listing S3 objects...');
+        console.log('\nStep 2: Listing S3 objects...');
         const s3StartTime = Date.now();
         const allObjects = await listAllObjects(prefix);
-        console.log(`Listed ${allObjects.length} S3 objects in ${Date.now() - s3StartTime} ms`);
+        console.log(`Listed ${allObjects.length} S3 objects in ${Date.now() - s3StartTime} ms\n`);
         
         if (allObjects.length === 0) {
-            console.log('No objects found in S3 bucket');
+            console.log('⚠️  No objects found in S3 bucket');
             return generateEmptyCsv();
         }
         
-        console.log(`Found ${allObjects.length} objects in S3 bucket, ${validBaseNames.size} valid media files in database`);
+        console.log(`Found ${allObjects.length} objects in S3 bucket, ${validBaseNames.size} valid media files in database\n`);
         
         // Step 3: Build CSV rows
+        console.log('Step 3: Processing objects and building CSV...');
         const csvRows = [];
         csvRows.push([
             'S3_Key',
@@ -380,21 +420,22 @@ async function generateCsv(prefix, excludeDocumentSnapshots) {
             processedCount++;
         }
         
-        console.log(`CSV generation complete. Processed: ${processedCount}, Excluded: ${excludedCount}`);
+        console.log(`\n✅ CSV generation complete. Processed: ${processedCount}, Excluded: ${excludedCount}`);
         
         // Step 4: Convert to CSV string
-        console.log('Step 3: Converting to CSV format...');
+        console.log('\nStep 4: Converting to CSV format...');
         const csvStartTime = Date.now();
         const csvContent = csvRows.map(row => row.join(',')).join('\n');
         const csvBytes = Buffer.from(csvContent, 'utf-8');
         
         const totalTime = Date.now() - startTime;
-        console.log(`CSV export completed successfully in ${totalTime} ms. CSV size: ${csvBytes.length} bytes`);
+        console.log(`✅ CSV export completed successfully in ${totalTime} ms`);
+        console.log(`   CSV size: ${formatBytes(csvBytes.length)} (${csvBytes.length} bytes)`);
         
         return csvBytes;
     } catch (error) {
         const totalTime = Date.now() - startTime;
-        console.error(`Error during CSV export after ${totalTime} ms:`, error);
+        console.error(`\n❌ Error during CSV export after ${totalTime} ms:`, error);
         throw error;
     }
 }
@@ -407,66 +448,45 @@ function generateEmptyCsv() {
     return Buffer.from(headers, 'utf-8');
 }
 
-// Initialize Express app
-const app = express();
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// CSV export endpoint
-app.get('/api/s3/export/csv', async (req, res) => {
+/**
+ * Main execution
+ */
+async function main() {
     try {
-        const prefix = req.query.prefix || null;
-        const excludeDocumentSnapshots = req.query.excludeDocumentSnapshots === 'true';
-        
-        console.log(`CSV export request - Prefix: ${prefix || '(none)'}, ExcludeDocumentSnapshots: ${excludeDocumentSnapshots}`);
-        
         // Generate CSV
         const csvBytes = await generateCsv(prefix, excludeDocumentSnapshots);
         
-        // Set headers for CSV download
-        const filename = `s3-media-export-${Date.now()}.csv`;
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Length', csvBytes.length);
+        // Determine output filename
+        const timestamp = Date.now();
+        const defaultFilename = `s3-media-export-${timestamp}.csv`;
+        const filename = outputFile || defaultFilename;
         
-        // Send CSV
-        res.send(csvBytes);
+        // Write CSV file to current directory
+        const filePath = path.join(process.cwd(), filename);
+        fs.writeFileSync(filePath, csvBytes);
+        
+        console.log(`\n📄 CSV file saved: ${filePath}`);
+        console.log(`   File size: ${formatBytes(csvBytes.length)} (${csvBytes.length} bytes)`);
+        console.log(`\n✅ Export complete! You can download the file using:`);
+        console.log(`   scp ubuntu@3.95.59.125:~/apps/Node/scripts/Check-S3-bucket-storage/${filename} .\n`);
+        
+        // Close database connection
+        await dbPool.end();
+        
     } catch (error) {
-        console.error('Error generating CSV:', error);
-        res.status(500).json({ 
-            error: 'Failed to generate CSV', 
-            message: error.message 
-        });
+        console.error('\n❌ Error:', error.message);
+        if (error.stack) {
+            console.error(error.stack);
+        }
+        await dbPool.end();
+        process.exit(1);
     }
-});
+}
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`\n🚀 S3 CSV Export API Server`);
-    console.log(`   Listening on port ${PORT}`);
-    console.log(`   S3 Bucket: ${S3_BUCKET_NAME}`);
-    console.log(`   Region: ${AWS_REGION}`);
-    console.log(`   Database: ${DB_HOST}:${DB_PORT}/${DB_NAME}`);
-    console.log(`\n📥 CSV Export Endpoint: http://localhost:${PORT}/api/s3/export/csv`);
-    console.log(`   Query params: ?prefix=CarImages/&excludeDocumentSnapshots=true\n`);
-});
+// Run the script
+if (require.main === module) {
+    main();
+}
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-    console.log('SIGTERM received, closing database pool...');
-    await dbPool.end();
-    process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-    console.log('SIGINT received, closing database pool...');
-    await dbPool.end();
-    process.exit(0);
-});
-
-module.exports = app;
-
+module.exports = { generateCsv, formatBytes, classifyFileType };
 
