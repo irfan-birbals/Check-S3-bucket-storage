@@ -180,6 +180,7 @@ function escapeCsvField(field) {
 /**
  * Query database to get all valid media filenames
  * Returns Set of base filenames (without extension)
+ * Queries vehicles_images, vehicles_videos, and vehicles_documents tables
  */
 async function getValidMediaFilenamesFromDatabase() {
     const validBaseNames = new Set();
@@ -188,60 +189,95 @@ async function getValidMediaFilenamesFromDatabase() {
         console.log('Querying database for media URLs...');
         const startTime = Date.now();
         
-        // Query medias table
-        const mediaQuery = `
-            SELECT DISTINCT url 
-            FROM medias 
-            WHERE url IS NOT NULL AND url != ''
+        // Query vehicles_images table (CarImages - can contain images and videos)
+        const imagesQuery = `
+            SELECT DISTINCT m.url 
+            FROM vehicles_images vi
+            JOIN medias m ON vi.images_id = m.id
+            WHERE m.url IS NOT NULL AND m.url != ''
         `;
         
-        const mediaResult = await dbPool.query(mediaQuery);
-        console.log(`Fetched ${mediaResult.rows.length} media records in ${Date.now() - startTime} ms`);
+        const imagesResult = await dbPool.query(imagesQuery);
+        console.log(`Fetched ${imagesResult.rows.length} car image records in ${Date.now() - startTime} ms`);
         
-        // Extract base filenames from URLs
-        for (const row of mediaResult.rows) {
+        let imagesCount = 0;
+        // Extract base filenames from car images
+        for (const row of imagesResult.rows) {
             const url = row.url;
             if (!url) continue;
             
-            // Remove query parameters if any
             const urlWithoutQuery = url.split('?')[0];
-            
-            // Extract filename (last segment after /)
             const filename = urlWithoutQuery.split('/').pop();
-            
-            // Get base name (without extension)
             const baseName = getBaseName(filename);
             if (baseName) {
                 validBaseNames.add(baseName);
+                imagesCount++;
             }
         }
         
-        console.log(`Extracted ${validBaseNames.size} valid media filenames from medias table`);
+        console.log(`Extracted ${imagesCount} valid car image filenames from vehicles_images table`);
         
-        // Query users table for profile pictures
-        const userQuery = `
-            SELECT DISTINCT picture 
-            FROM users 
-            WHERE picture IS NOT NULL AND picture != ''
+        // Query vehicles_videos table (Videos - references media_with_snapshots)
+        const videosQuery = `
+            SELECT DISTINCT m.url 
+            FROM vehicles_videos vv
+            JOIN media_with_snapshots mws ON vv.videos_id = mws.id
+            JOIN medias m ON mws.primary_media_id = m.id
+            WHERE m.url IS NOT NULL AND m.url != ''
         `;
         
-        const userResult = await dbPool.query(userQuery);
-        console.log(`Fetched ${userResult.rows.length} user records in ${Date.now() - startTime} ms`);
+        const videosResult = await dbPool.query(videosQuery);
+        console.log(`Fetched ${videosResult.rows.length} video records in ${Date.now() - startTime} ms`);
         
-        // Extract base filenames from profile picture URLs
-        for (const row of userResult.rows) {
-            const picture = row.picture;
-            if (!picture) continue;
+        let videosCount = 0;
+        // Extract base filenames from videos
+        for (const row of videosResult.rows) {
+            const url = row.url;
+            if (!url) continue;
             
-            const urlWithoutQuery = picture.split('?')[0];
+            const urlWithoutQuery = url.split('?')[0];
             const filename = urlWithoutQuery.split('/').pop();
             const baseName = getBaseName(filename);
             if (baseName) {
                 validBaseNames.add(baseName);
+                videosCount++;
             }
         }
         
+        console.log(`Extracted ${videosCount} valid video filenames from vehicles_videos table`);
+        
+        // Query vehicles_documents table (Documents - references media_with_snapshots, can contain images like .jpg, etc.)
+        const documentsQuery = `
+            SELECT DISTINCT m.url 
+            FROM vehicles_documents vd
+            JOIN media_with_snapshots mws ON vd.documents_id = mws.id
+            JOIN medias m ON mws.primary_media_id = m.id
+            WHERE m.url IS NOT NULL AND m.url != ''
+        `;
+        
+        const documentsResult = await dbPool.query(documentsQuery);
+        console.log(`Fetched ${documentsResult.rows.length} document records in ${Date.now() - startTime} ms`);
+        
+        let documentsCount = 0;
+        // Extract base filenames from documents
+        for (const row of documentsResult.rows) {
+            const url = row.url;
+            if (!url) continue;
+            
+            const urlWithoutQuery = url.split('?')[0];
+            const filename = urlWithoutQuery.split('/').pop();
+            const baseName = getBaseName(filename);
+            if (baseName) {
+                validBaseNames.add(baseName);
+                documentsCount++;
+            }
+        }
+        
+        console.log(`Extracted ${documentsCount} valid document filenames from vehicles_documents table`);
         console.log(`Found ${validBaseNames.size} unique media files in database (total time: ${Date.now() - startTime} ms)`);
+        console.log(`  - Car Images: ${imagesCount}`);
+        console.log(`  - Videos: ${videosCount}`);
+        console.log(`  - Documents: ${documentsCount}`);
         
         return validBaseNames;
     } catch (error) {
@@ -390,7 +426,8 @@ async function generateCsv(prefix, excludeDocumentSnapshots) {
                     excludedCount++;
                     continue;
                 }
-                if (pathType === 'snapshot' && excludeDocumentSnapshots) {
+                // Always exclude document snapshots (regardless of flag)
+                if (pathType === 'snapshot') {
                     excludedCount++;
                     continue;
                 }
